@@ -1,0 +1,26 @@
+services:
+  - type: web
+    name: alhilal-ai-ltx
+    runtime: node
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: LTX_API_KEY
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: XKIRO_API_KEY
+        sync: false
+      - key: ADMIN_PHONE
+        sync: false
+      - key: FIREBASE_PROJECT_ID
+        sync: false
+      - key: FIREBASE_CLIENT_EMAIL
+        sync: false
+      - key: FIREBASE_PRIVATE_KEY
+        sync: false
