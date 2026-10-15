@@ -1,0 +1,60 @@
+services:
+  - type: web
+    name: alhilal-ai
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NODE_VERSION
+        value: "22"
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: LTX_API_KEY
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: XKIRO_API_KEY
+        sync: false
+      - key: ADMIN_PHONE
+        sync: false
+      - key: ADMIN_INITIAL_PASSWORD
+        sync: false
+      # Firebase Admin (التخزين الدائم + التحقق من جوجل)
+      - key: FIREBASE_PROJECT_ID
+        sync: false
+      - key: FIREBASE_CLIENT_EMAIL
+        sync: false
+      - key: FIREBASE_PRIVATE_KEY
+        sync: false
+      # Firebase Web (زر تسجيل الدخول بجوجل)
+      - key: FIREBASE_WEB_API_KEY
+        sync: false
+      - key: FIREBASE_AUTH_DOMAIN
+        sync: false
+      - key: FIREBASE_APP_ID
+        sync: false
+      # اختياري: بريد جوجل الخاص بالمالك ليصبح أدمن
+      - key: ADMIN_EMAIL
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SECRET_KEY
+        sync: false
+
+      - key: APIFRAME_API_KEY
+        sync: false
+
+      # Additional providers (configure only if you have keys)
+      - key: MAGIC_HOUR_API_KEY
+        sync: false
+      - key: TAVUS_API_KEY
+        sync: false
+      - key: RUNWAY_API_KEY
+        sync: false
+      - key: WAN_API_KEY
+        sync: false
