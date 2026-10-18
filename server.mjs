@@ -86,9 +86,9 @@ if (firebaseReady() && !getApps().length) {
   });
 }
 const db = firebaseReady() ? getFirestore() : null;
-if (!db) console.warn('⚠️ Firebase غير مضبوط: البيانات تُحفظ محليًا وقد لا تستمر على الاستضافات عديمة الحالة مثل Vercel.');
+if (!db) console.warn('⚠️ Firebase غير مضبوط: البيانات تُحفظ في ملفات محلية وقد تضيع عند إعادة النشر على Render.');
 
-const fallbackDir = process.env.DATA_DIR ? path.resolve(process.env.DATA_DIR) : (process.env.VERCEL === '1' ? path.join('/tmp', 'alhilal-ai-data') : path.join(__dirname, 'data'));
+const fallbackDir = process.env.DATA_DIR ? path.resolve(process.env.DATA_DIR) : path.join(__dirname, 'data');
 try { fs.mkdirSync(fallbackDir, { recursive: true }); } catch (e) { console.warn('⚠️ تعذر إنشاء مجلد البيانات:', e.message); }
 const fallback = name => path.join(fallbackDir, name);
 // استخدم سرًا ثابتًا عبر إعادة التشغيل؛ الأفضل ضبط SESSION_SECRET في إعدادات الاستضافة.
@@ -101,12 +101,9 @@ if (!process.env.SESSION_SECRET && !persistedSessionSecret) {
   try { fs.writeFileSync(sessionSecretFile, persistedSessionSecret, { mode: 0o600 }); } catch (e) { console.warn('تعذر حفظ سر الجلسة في DATA_DIR:', e.message); }
 }
 const SESSION_SECRET = (process.env.SESSION_SECRET || persistedSessionSecret || crypto.randomBytes(64).toString('hex')).trim();
-if (process.env.VERCEL === '1' && !process.env.SESSION_SECRET) console.error('CONFIGURATION REQUIRED: Set a stable SESSION_SECRET in Vercel Environment Variables or sessions may expire between function instances.');
 if (SESSION_SECRET.length < 64) console.warn('⚠️ SESSION_SECRET قصير؛ استخدم قيمة عشوائية بطول 128 خانة hex أو أكثر.');
 function readJson(file, def) { try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return def; } }
 function writeJson(file, data) {
-  // Vercel's project filesystem is read-only/ephemeral. Firestore-backed paths persist via db below.
-  if (process.env.VERCEL === '1') return;
   const tmp = file + '.tmp';
   fs.writeFileSync(tmp, JSON.stringify(data, null, 2), 'utf8');
   fs.renameSync(tmp, file);
@@ -134,18 +131,6 @@ function send(res, status, body, type = 'application/json', extra = {}) {
 
 // قراءة الجسم كـ Buffer ثم تحويله مرة واحدة (إصلاح تلف الحروف العربية عند تقسيم الـ chunks)
 async function body(req, limit = 8 * 1024 * 1024) {
-  // Vercel may pre-parse JSON bodies; use that value when available.
-  if (req.body !== undefined && req.body !== null) {
-    if (Buffer.isBuffer(req.body)) {
-      if (req.body.length > limit) throw httpError('حجم الطلب كبير جدًا.', 413);
-      try { return JSON.parse(req.body.toString('utf8') || '{}'); } catch { return {}; }
-    }
-    if (typeof req.body === 'object') return req.body;
-    if (typeof req.body === 'string') {
-      if (Buffer.byteLength(req.body) > limit) throw httpError('حجم الطلب كبير جدًا.', 413);
-      try { return JSON.parse(req.body || '{}'); } catch { return {}; }
-    }
-  }
   let size = 0;
   const chunks = [];
   for await (const c of req) {
@@ -223,19 +208,7 @@ const isAdminUser = u =>
     (ADMIN_PHONE && normalizePhone(u.phone) === ADMIN_PHONE)));
 
 async function getUser(uid) {
-  // Read Firebase first, but keep compatibility with accounts stored by earlier
-  // deployments in the local JSON store. When found, migrate them to Firestore.
-  if (db) {
-    const snap = await db.collection('users').doc(uid).get();
-    if (snap.exists) return snap.data();
-    const legacy = readJson(fallback('users.json'), {})[uid] || null;
-    if (legacy) {
-      try { await db.collection('users').doc(uid).set(legacy, { merge: true }); }
-      catch (e) { console.warn('تعذرت ترحيل الحساب القديم إلى Firestore:', e.message); }
-      return legacy;
-    }
-    return null;
-  }
+  if (db) { const s = await db.collection('users').doc(uid).get(); return s.exists ? s.data() : null; }
   return readJson(fallback('users.json'), {})[uid] || null;
 }
 async function saveUser(u) {
@@ -552,7 +525,7 @@ async function removeStoreProduct(id){
   writeJson(fallback('shop-products.json'),readJson(fallback('shop-products.json'),[]).filter(x=>x.id!==id));
   if(db)await db.collection('shopProducts').doc(id).delete();
 }
-export async function handleRequest(req, res) {
+const server = http.createServer(async (req, res) => {
   try {
     if (req.method === 'OPTIONS') return send(res, 204, {});
     const url = new URL(req.url, 'http://localhost');
@@ -699,7 +672,6 @@ export async function handleRequest(req, res) {
 
     /* ----- user video submissions and red points ----- */
     if (M === 'POST' && p === '/api/red-videos/upload') {
-      if (process.env.VERCEL === '1') throw httpError('رفع الفيديوهات يحتاج ربط تخزين دائم (Firebase Storage) قبل تفعيله على Vercel. لم يتم حفظ الملف؛ استخدم إرسال الفيديو عبر واتساب مؤقتًا.', 503);
       const d = await userFromReq(req);
       const q = new URL(req.url, 'http://localhost').searchParams;
       const mime = String(q.get('mimeType') || req.headers['content-type'] || '');
@@ -1043,7 +1015,7 @@ export async function handleRequest(req, res) {
       const name = String(b.name || '').trim().slice(0, 160), category = String(b.category || 'منتجات أخرى').slice(0, 50);
       const price = Number(b.price);
       if (!name || !Number.isFinite(price) || price < 0) throw httpError('اسم المنتج والسعر مطلوبان.', 400);
-      const rec = { id: 'prd_' + crypto.randomUUID(), name, category, price, image: String(b.image || '').slice(0, 720000), description: String(b.description || '').slice(0, 2000), active: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
+      const rec = { id: 'prd_' + crypto.randomUUID(), name, category, price, image: String(b.image || '').slice(0, 2000), description: String(b.description || '').slice(0, 2000), active: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
       await writeStoreProduct(rec);
       return send(res, 200, { ok: true, product: rec });
     }
@@ -1052,7 +1024,7 @@ export async function handleRequest(req, res) {
       const products = await readStoreProducts(), old = products.find(x => x.id === id);
       if (!old) throw httpError('المنتج غير موجود.', 404);
       const price = Number(b.price); if (!String(b.name || '').trim() || !Number.isFinite(price) || price < 0) throw httpError('اسم المنتج والسعر مطلوبان.', 400);
-      const rec = { ...old, name: String(b.name).trim().slice(0,160), category: String(b.category || 'منتجات أخرى').slice(0,50), price, image: String(b.image || '').slice(0,720000), description: String(b.description || '').slice(0,2000), updatedAt: new Date().toISOString() };
+      const rec = { ...old, name: String(b.name).trim().slice(0,160), category: String(b.category || 'منتجات أخرى').slice(0,50), price, image: String(b.image || '').slice(0,2000), description: String(b.description || '').slice(0,2000), updatedAt: new Date().toISOString() };
       await writeStoreProduct(rec); return send(res, 200, { ok: true, product: rec });
     }
     if (M === 'DELETE' && p.startsWith('/api/admin/shop/products/')) {
@@ -1105,11 +1077,7 @@ export async function handleRequest(req, res) {
     if (!res.headersSent) send(res, e.status || 500, { error: e.message || String(e) });
     else res.end();
   }
-}
+});
 
-// Run as a traditional Node server on Render/local; Vercel imports handleRequest.
-if (process.env.VERCEL !== '1') {
-  const server = http.createServer(handleRequest);
-  server.listen(PORT, '0.0.0.0', () => console.log(`الهلال AI running on port ${PORT}`));
-}
 process.on('unhandledRejection', e => console.error('unhandledRejection', e));
+server.listen(PORT, '0.0.0.0', () => console.log(`الهلال AI running on port ${PORT}`));
