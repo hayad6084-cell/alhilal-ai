@@ -1,0 +1,3 @@
+Server JavaScript syntax check: PASS
+
+Preserved existing provider/API and deployment settings. Red-point checkout validates the package and balance on the server; it deducts red points and grants package coins or extends unlimited time. Montage basic edits use FFmpeg.wasm in the browser; advanced AI actions still need a connected provider.
