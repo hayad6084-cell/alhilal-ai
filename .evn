@@ -1,0 +1,1 @@
+DATABASE_URL=postgres://your_neondb_user:your_password@your-neon-host.neon.tech/neondb?sslmode=require
