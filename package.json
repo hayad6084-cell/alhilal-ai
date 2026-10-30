@@ -1,0 +1,16 @@
+{
+  "name": "alhilal-ai",
+  "version": "2.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "firebase-admin": "^13.0.0"
+  },
+  "main": "api/[...path].mjs",
+  "scripts": {
+    "build": "node --check \"api/[...path].mjs\" && node --check server-core.mjs"
+  }
+}
